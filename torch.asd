@@ -1,9 +1,9 @@
 ; vim: ft=lisp et
 (in-package :asdf)
 (defsystem :torch
+  :version "0.0.0"
   :depends-on
   (
-   "type-ext"   ; type extensions.
    "cl-dot"     ; dot api.
    "alexandria" ; public domain utilities.
    "predcase"   ; control flow.

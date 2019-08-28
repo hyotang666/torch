@@ -1,5 +1,5 @@
 (in-package :cl-user)
-(defpackage :torch(:use :type-ext :alexandria :cl :predcase)
+(defpackage :torch(:use :alexandria :cl :predcase)
   (:export
     ; primary api
     #:code-graph
