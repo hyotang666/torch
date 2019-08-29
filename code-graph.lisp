@@ -13,8 +13,8 @@
 	(*codes*(setup graph(privates graph))))
     (if(not *split*)
       (make-dot system type(if *ignore-standalone*
-			     (remove-if #'standalone-p(hash-table-values *codes*))
-			     (hash-table-values *codes*))
+			     (remove-if #'standalone-p(alexandria:hash-table-values *codes*))
+			     (alexandria:hash-table-values *codes*))
 		direction)
       (if *ignore-standalone*
 	(loop :for symbol :being :each :external-symbol :in (or package system)

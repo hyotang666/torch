@@ -23,8 +23,8 @@
   (funcall *builtin-hook* expander form environment))
 
 (defun form(form)
-  (or (remove-if (complement(conjoin #'symbolp #'target-symbolp))
-		 (delete-duplicates(flatten form)
+  (or (remove-if (complement(alexandria:conjoin #'symbolp #'target-symbolp))
+		 (delete-duplicates(alexandria:flatten form)
 		   :from-end t))
       (throw :do-nothing nil)))
 
