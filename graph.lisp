@@ -23,10 +23,19 @@
   (funcall *builtin-hook* expander form environment))
 
 (defun form(form)
-  (or (remove-if (complement(alexandria:conjoin #'symbolp #'target-symbolp))
-		 (delete-duplicates(alexandria:flatten form)
-		   :from-end t))
-      (throw :do-nothing nil)))
+  (labels((flatten(form)
+	    (mapcan (lambda(elt)
+		      (cond
+			#+sbcl
+			((sb-int:comma-p elt)
+			 (flatten (sb-int:comma-expr elt)))
+			(t
+			  (list elt))))
+		    (alexandria:flatten form))))
+    (or (remove-if (complement(alexandria:conjoin #'symbolp #'target-symbolp))
+		   (delete-duplicates (flatten form)
+				      :from-end t))
+	(throw :do-nothing nil))))
 
 (defun target-symbolp(symbol)
   (and (fboundp symbol)
