@@ -3,6 +3,7 @@
 (defvar *builtin-hook* *macroexpand-hook*)
 
 (defvar *forms*)
+(defvar *packages*)
 
 (defun macroexpand-hook(expander form environment)
   (catch :do-nothing
@@ -16,6 +17,8 @@
 	   ((typep form '(cons (eql defmethod) *))
 	    (when(eq  *package* (symbol-package(cadr form)))
 	      (pushnew(form form)*forms* :test #'equal)))
+	   ((typep form '(cons (eql defpackage) *))
+	    (push (second form) *packages*))
 	   ((typep form '(cons (eql defgeneric) *))
 	    (loop :for option :in (cdddr form)
 		  :when(eq :method (car option))
@@ -39,7 +42,9 @@
 
 (defun target-symbolp(symbol)
   (and (fboundp symbol)
-       (eq *package* (symbol-package symbol))))
+       (find (package-name(symbol-package symbol))
+	     *packages*
+	     :test #'string=)))
 
 (defun graph(system)
   (loop :for system :in (asdf:system-depends-on(asdf:find-system system))
@@ -54,6 +59,7 @@
        (*load-print* nil))
     (handler-bind((warning #'muffle-warning))
       (let((*macroexpand-hook* #'macroexpand-hook)
-	   *forms*)
+	   *forms*
+	   *packages*)
 	(asdf:load-system system :force t)
 	*forms*))))
