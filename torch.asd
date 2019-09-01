@@ -1,7 +1,7 @@
 ; vim: ft=lisp et
 (in-package :asdf)
 (defsystem :torch
-  :version "0.1.1"
+  :version "0.1.2"
   :depends-on
   (
    "cl-dot"     ; dot api.
@@ -25,3 +25,10 @@
               ; mid2
               (:file "function-graph" :depends-on("graph" "code-graph" "specials"))
               ))
+
+(defmethod operate :after(o (c (eql(find-system :torch)))&key)
+  (unless(symbol-value(find-symbol "*DOT-PATH*" "CL-DOT"))
+    (warn "Command \"dot\" is not installed. ~
+          After install graphviz, do one of below.~%~
+          ~2T1: (asdf:load-system :cl-dot :force t)~%~
+          ~2T2: (setq cl-dot:*dot-path* \"path/to/dot\")")))
