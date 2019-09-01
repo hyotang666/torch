@@ -49,18 +49,3 @@ mmmm...  already?
 CLISP CCL SBCL ECL.
 But maybe works well any other lisps.
 
-## For heavy user
-
-* Dictionary
-See doc/\*.md
-
-## For resolver
-
-* Specification of API which integrates implementation dependent behaviors
-See package.lisp especially SYMBOL<=FUNCTION.
-
-## For improver
-
-* Specification of DSL
-none
-
