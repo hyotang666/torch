@@ -30,7 +30,11 @@
   (edges object))
 
 (defmethod cl-dot:graph-object-node((graph(eql 'code))(o symbol))
-  (make-instance 'cl-dot:node :id (format nil "~A~%(Accessor?)"o)))
+  (make-instance 'cl-dot:node
+		 :id (format nil "~A~%(Accessor?)"o)
+		 :attributes (list :color (if(external-symbolp o)
+					    :red
+					    :black))))
 
 (defun edges(code)
   (append (loop :for common :in (code-commons code)
