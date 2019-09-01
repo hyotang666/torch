@@ -6,6 +6,39 @@ It helps you to grasp the third parson's system strcuture.
 TORCH uses GRAPHVIZ.
 You need to install it.
 
+## Usage
+### System dependency graph.
+
+```lisp
+(torch:system-graph :torch)
+```
+
+![system-graph](doc/system-graph.png)
+
+### System component dependency graph.
+
+```lisp
+(torch:file-graph :torch)
+```
+
+![file-graph](doc/file-graph.png)
+
+### Function dependency graph.
+
+```lisp
+(torch:function-graph 'torch:function-graph)
+```
+
+![function-graph](doc/function-graph.png)
+
+### Code graph.
+
+```lisp
+(gorch:code-graph :torch)
+```
+
+![code-graph](doc/code-graph.png)
+
 ## From developer
 
 * Product's goal
@@ -15,15 +48,6 @@ mmmm...  already?
 * Supported implementation
 CLISP CCL SBCL ECL.
 But maybe works well any other lisps.
-
-## For light user
-```lisp
-;;; Tutorial - primary API
-(code-graph :torch)
-;=> #P"/current/working/directory/torch.png"
-```
-* FAQ
-none
 
 ## For heavy user
 
@@ -40,7 +64,3 @@ See package.lisp especially SYMBOL<=FUNCTION.
 * Specification of DSL
 none
 
-## For maintainer
-
-* Structure of the system model
-See doc/torch.png
