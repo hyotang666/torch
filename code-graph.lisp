@@ -38,6 +38,44 @@
 			 :key #'cdr))
 	:collect (car node)))
 
+;; debug use.
+(defun print-graph(system
+		    &key
+		    ((:ignore-privates *ignore-privates*)*ignore-privates*)
+		    ((:ignore-standalone *ignore-standalone*)*ignore-standalone*)
+		    ((:split *split*) *split*)
+		    direction
+		    package)
+  (let*((graph
+	  (graph system))
+	(*codes*
+	  (setup graph(privates graph))))
+    (if(not *split*)
+      (cl-dot:print-graph
+	(apply #'cl-dot:generate-graph-from-roots
+	       'code
+	       (if *ignore-standalone*
+		 (remove-if #'standalone-p(alexandria:hash-table-values *codes*))
+		 (alexandria:hash-table-values *codes*))
+	       (when direction
+		 `((:rankdir ,(string direction))))))
+      (if *ignore-standalone*
+	(loop :for symbol :being :each :external-symbol :in (or package system)
+	      :for code = (gethash symbol *codes*)
+	      :unless (standalone-p code)
+	      :do (cl-dot:print-graph (apply #'cl-dot:generate-graph-from-roots
+					     'code
+					     (list code)
+					     (when direction
+					       `((:rankdir ,(string direction)))))))
+	(loop :for symbol :being :each :external-symbol :in (or package system)
+	      :when (fboundp symbol)
+	      :do (cl-dot:print-graph (apply #'cl-dot:generate-graph-from-roots
+					     'code
+					     (gethash symbol *codes*)
+					     (when direction
+					       `((:rankdir ,(string direction)))))))))))
+
 (defun make-dot(name type objects direction)
   (let((namestring(filename name type)))
     (cl-dot:dot-graph (apply #'cl-dot:generate-graph-from-roots
