@@ -28,6 +28,11 @@ You need to install it.
 ```lisp
 (torch:function-graph 'torch:function-graph)
 ```
+Red box means it is external symbol.
+
+Blue box means it name is used as component name too. (i.e. lisp file name.)
+
+Circle means it is generated automatically by DEFCLASS, DEFSTRUCT or DEFINE-CONDITION.
 
 ![function-graph](doc/function-graph.png)
 
