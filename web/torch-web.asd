@@ -6,6 +6,10 @@
   :depends-on
   (
    "cl-dot" ; Interface for graphviz.
+   "quri" ; URI object.
+   "dexador" ; HTTP client.
+   "plump" ; DOM.
+   "clss" ; CSS like selector.
    )
   :pathname
   "src/"
