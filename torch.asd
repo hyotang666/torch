@@ -9,6 +9,7 @@
    "predcase"   ; control flow.
    "millet"     ; wrapper for implementation dependent utilities.
    )
+  :pathname "src/"
   :components((:file "package")
               ; bottom
               (:file "system-graph" :depends-on ("package"))
