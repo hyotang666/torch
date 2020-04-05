@@ -11,9 +11,9 @@
                                                                   object))))
                                    :shape :box
                                    :color (predcase (code-name object)
-                                                    (external-symbolp :red)
-                                                    (symbol-names-file-p :blue)
-                                                    (t :black)))))
+                                            (external-symbolp :red)
+                                            (symbol-names-file-p :blue)
+                                            (t :black)))))
 
 (defun external-symbolp (symbol)
   (eq :external (nth-value 1

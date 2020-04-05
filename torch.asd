@@ -1,7 +1,7 @@
 ; vim: ft=lisp et
 (in-package :asdf)
 (defsystem :torch
-  :version "0.1.2"
+  :version "0.1.3"
   :depends-on
   (
    "cl-dot"     ; dot api.
