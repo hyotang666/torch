@@ -2,7 +2,7 @@
 (in-package :asdf)
 (defsystem "torch-web"
   :version
-  "0.0.0"
+  "0.0.1"
   :depends-on
   (
    "cl-dot" ; Interface for graphviz.

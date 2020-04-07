@@ -37,9 +37,8 @@
                   (equal (princ-to-string cons) (princ-to-string uri))))
             (map 'list
                  (lambda (form)
-                   (let* ((attributes (plump-dom:attributes form))
-                          (action (gethash "ACTION" attributes))
-                          (method (gethash "METHOD" attributes)))
+                   (let* ((action (plump:attribute form "action"))
+                          (method (plump:attribute form "method")))
                      (cons method (quri:merge-uris action (cdr uri)))))
                  (clss:select "form" (plump:parse body)))))))))
 
