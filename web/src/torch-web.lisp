@@ -10,8 +10,8 @@
 
 (defun visitedp (cons) (values (gethash (princ-to-string cons) *visited*)))
 
-(defun visited (cons)
-  (tagbody (setf (gethash (princ-to-string cons) *visited*) cons)))
+(defun visited (uri list)
+  (tagbody (setf (gethash (princ-to-string uri) *visited*) list)))
 
 (defstruct uri uri method submethod)
 
@@ -36,30 +36,29 @@
                                                                  uri)))))))
 
 (defun uri-page-uris (uri)
-  (unless (visitedp uri)
-    (visited uri)
-    (when (string-equal :get (uri-method uri))
-      (handler-case (values (dex:get (uri-uri uri)))
-        (dex:http-request-failed (c)
-          (let ((new
-                 (make-failed :uri (dex:request-uri c)
-                              :method (dex:request-method c)
-                              :message (format nil "~D ~A"
-                                               (dex:response-status c)
-                                               (dex:response-body c)))))
-            (visited new)
-            (list new)))
-        (:no-error (body)
-          (loop :for form :across (clss:select "form" (plump:parse body))
-                :for action := (plump:attribute form "action")
-                :for method := (plump:attribute form "method")
-                :for next := (quri:merge-uris action (uri-uri uri))
-                :for new
-                     := (make-uri :uri next
-                                  :method method
-                                  :submethod (form-submethod form))
-                :unless (visitedp new)
-                  :collect new))))))
+  (or (visitedp uri)
+      (when (and (string-equal :get (uri-method uri)) (not (failed-p uri)))
+        (handler-case (values (dex:get (uri-uri uri)))
+          (dex:http-request-failed (c)
+            (let ((new
+                   (make-failed :uri (dex:request-uri c)
+                                :method (princ-to-string
+                                          (dex:response-status c))
+                                :message (dex:response-body c))))
+              (list new)))
+          (:no-error (body)
+            (loop :for form :across (clss:select "form" (plump:parse body))
+                  :for action := (plump:attribute form "action")
+                  :for method := (plump:attribute form "method")
+                  :for next := (quri:merge-uris action (uri-uri uri))
+                  :for new
+                       := (make-uri :uri next
+                                    :method method
+                                    :submethod (form-submethod form))
+                  :unless (equalp new uri)
+                    :collect new :into news
+                  :finally (visited uri news)
+                           (return news)))))))
 
 (defun form-submethod (form)
   (loop :for input :across (clss:select "input[name=method]" form)
