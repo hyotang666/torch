@@ -15,26 +15,40 @@
 
 (defstruct uri uri method submethod)
 
+(defstruct (failed (:include uri)) message)
+
 (defmethod cl-dot:graph-object-node ((graph (eql 'web)) (uri uri))
   (make-instance 'cl-dot:node
-                 :attributes (list :label (quri:uri-path (uri-uri uri))
+                 :attributes (list :label (typecase uri
+                                            (failed (failed-message uri))
+                                            (uri
+                                             (quri:uri-path (uri-uri uri))))
                                    :shape :box)))
 
 (defmethod cl-dot:graph-object-points-to ((graph (eql 'web)) (uri uri))
   (loop :for uri :in (uri-page-uris uri)
         :collect (make-instance 'cl-dot:attributed
                                 :object uri
-                                :attributes (list :label (or (uri-submethod
-                                                               uri)
-                                                             (uri-method
-                                                               uri))))))
+                                :attributes (list :label (string-upcase
+                                                           (or (uri-submethod
+                                                                 uri)
+                                                               (uri-method
+                                                                 uri)))))))
 
 (defun uri-page-uris (uri)
   (unless (visitedp uri)
     (visited uri)
-    (when (equal "get" (uri-method uri))
+    (when (string-equal :get (uri-method uri))
       (handler-case (values (dex:get (uri-uri uri)))
-        (dex:http-request-failed ())
+        (dex:http-request-failed (c)
+          (let ((new
+                 (make-failed :uri (dex:request-uri c)
+                              :method (dex:request-method c)
+                              :message (format nil "~D ~A"
+                                               (dex:response-status c)
+                                               (dex:response-body c)))))
+            (visited new)
+            (list new)))
         (:no-error (body)
           (loop :for form :across (clss:select "form" (plump:parse body))
                 :for action := (plump:attribute form "action")
