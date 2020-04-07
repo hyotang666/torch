@@ -8,6 +8,8 @@
 
 (defvar *visited* (make-hash-table :test #'equal))
 
+(defvar *cookie* (cl-cookie:make-cookie-jar))
+
 (defun visitedp (cons) (values (gethash (princ-to-string cons) *visited*)))
 
 (defun visited (uri list)
@@ -75,3 +77,38 @@
                                               (make-uri :uri uri
                                                         :method "get")))))
     (cl-dot:dot-graph graph "site.svg" :format :svg)))
+
+(defmacro with-cookie (&body clauses)
+  `(let ((*cookie* (cl-cookie:make-cookie-jar)))
+     ,@(mapcar
+         (lambda (clause)
+           (let ((request
+                  `(,(uiop:find-symbol* (string-upcase (car clause)) :dex)
+                    ,(cadr clause) :cookie-jar *cookie*)))
+             (if (not (eq :action (third clause)))
+                 request
+                 `(let* ((forms (clss:select "form" (plump:parse ,request)))
+                         (form (elt forms 0))
+                         (params ',(nthcdr 3 clause)))
+                    (assert (= 1 (length forms))) ; TODO RESTART-CASE.
+                    (funcall
+                      (uiop:find-symbol*
+                        (string-upcase (plump:attribute form "method")) :dex)
+                      (quri:merge-uris (plump:attribute form "action")
+                                       ,(cadr clause))
+                      :cookie-jar *cookie*
+                      :content (loop :for input
+                                          :across (clss:select "input" form)
+                                     :for name := (plump:attribute input "name")
+                                     :for value
+                                          := (plump:attribute input "value")
+                                     :for specified
+                                          := (getf params
+                                                   (intern (string-upcase name)
+                                                           :keyword))
+                                     :if specified
+                                       :collect (cons name specified)
+                                     :else :if (and name value)
+                                       :collect (cons name value)))))))
+         clauses)
+     *cookie*))
