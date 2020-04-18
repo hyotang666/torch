@@ -40,15 +40,20 @@
                      :method (princ-to-string (dex:response-status c))
                      :message (princ-to-string (type-of c)))))
     (:no-error (body)
-      (loop :for form :across (clss:select "form" (plump:parse body))
-            :for action := (plump:attribute form "action")
-            :for method := (plump:attribute form "method")
-            :for next := (quri:merge-uris action uri)
-            :for new
-                 := (make-edge :uri next
-                               :method method
-                               :submethod (form-submethod form))
-            :collect new))))
+      (nconc
+        (loop :for form :across (clss:select "form" (plump:parse body))
+              :for action := (plump:attribute form "action")
+              :for method := (plump:attribute form "method")
+              :for next := (quri:merge-uris action uri)
+              :for new
+                   := (make-edge :uri next
+                                 :method method
+                                 :submethod (form-submethod form))
+              :collect new)
+        (loop :for anchor :across (clss:select "a" (plump:parse body))
+              :collect (make-edge :uri (quri:merge-uris
+                                         (plump:attribute anchor "href") uri)
+                                  :method "get"))))))
 
 ;;;; SITE-GRAPH
 
