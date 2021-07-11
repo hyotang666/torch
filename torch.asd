@@ -1,7 +1,7 @@
 ; vim: ft=lisp et
 (in-package :asdf)
 (defsystem :torch
-  :version "0.1.3"
+  :version "0.2.0"
   :depends-on
   (
    "cl-dot"     ; dot api.
@@ -10,22 +10,7 @@
    "millet"     ; wrapper for implementation dependent utilities.
    )
   :pathname "src/"
-  :components((:file "package")
-              ; bottom
-              (:file "system-graph" :depends-on ("package"))
-              (:file "package-graph" :depends-on ("package"))
-              (:file "file-graph" :depends-on("package"))
-              (:file "object" :depends-on ("package"))
-
-              (:file "specials" :depends-on ("package"))
-              (:file "type" :depends-on ("package"))
-              (:file "graph" :depends-on("package"))
-              ; mid1
-              (:file "dot" :depends-on ("type" "specials"))
-              (:file "code-graph" :depends-on("graph" "type"))
-              ; mid2
-              (:file "function-graph" :depends-on("graph" "code-graph" "specials"))
-              ))
+  :components((:file "torch")))
 
 (defmethod operate :after(o (c (eql(find-system :torch)))&key)
   (unless(symbol-value(find-symbol "*DOT-PATH*" "CL-DOT"))
