@@ -6,6 +6,8 @@
 
 (in-package :torch-web)
 
+(declaim (optimize speed))
+
 ;;;; TYPES
 
 (deftype algorithm ()
@@ -49,10 +51,13 @@
       (length vector)))
 
 (defun form-submethod (form)
-  (loop :for input :across (clss:select "input[name=method]" form)
-        :thereis (plump:attribute input "value")))
+  (loop :with inputs = (clss:select "input[name=method]" form)
+        :for i :upfrom 0 :below (vector-length inputs)
+        :thereis (plump:attribute (aref inputs i) "value")))
 
 (defvar *interval* 2)
+
+(declaim (type (unsigned-byte 8) *interval*))
 
 (declaim
  (ftype (function (simple-string &optional (or null simple-string))
@@ -150,7 +155,7 @@
     (format t "digraph {~2I")
     (let ((id-table (make-hash-table :test #'equal)))
       (loop :for node :being :each :hash-value :of nodes :using (:hash-key uri)
-            :for id :upfrom 1
+            :for id :of-type (integer 0 #.most-positive-fixnum) :upfrom 1
             :do (format t "~:@_~S [label=~S];"
                         (setf (gethash uri id-table) (princ-to-string id))
                         (handler-case (quri:url-decode (node-uri node))
