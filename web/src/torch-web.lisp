@@ -203,6 +203,17 @@
       :format format)
     (pathname namestring)))
 
+;;;; PRINT-LABELS
+;; Especially for [graph_editor](ttps://csacademy.com/app/graph_editor/)
+
+(defun print-labels (table)
+  (loop :for uri :being :each :hash-key :of table
+        :do (funcall (formatter "~S~%") *standard-output* (decode-uri uri)))
+  (loop :for uri :being :each :hash-key :of table :using (:hash-value node)
+        :do (dolist (edge (node-edges node))
+              (funcall (formatter "~S ~S~%") *standard-output* (decode-uri uri)
+                       (decode-uri (uri-uri edge))))))
+
 ;;;; WITH-COOKIE
 
 (defmacro with-cookie (&body clauses)
