@@ -19,28 +19,17 @@
 
 (in-package :torch)
 
+(declaim (optimize speed))
+
 ;;; helpers
+
+(declaim (type list *invalid-chars*))
 
 (defvar *invalid-chars* '(#\* #\? #\/ #\\ #\Space))
 
+(declaim (ftype (function (character) (values t &optional)) invalid-charp))
+
 (defun invalid-charp (c) (find c *invalid-chars*))
-
-(defun safety-name (name)
-  (with-output-to-string (*standard-output*)
-    (loop :for c :across (string name)
-          :do (if (invalid-charp c)
-                  (progn (write-char #\\) (write-char c))
-                  (write-char c)))))
-
-(defun filename (name type)
-  (format nil "~(~A~).~(~A~)" (safety-name name) type))
-
-(defun ensure-name (obj)
-  (typecase obj
-    ((or symbol string) obj)
-    (package (package-name obj))
-    (asdf:component (asdf:component-name obj))
-    (function (millet:function-name obj))))
 
 (defun supported-format-string ()
   (flet ((dot ()
@@ -59,6 +48,32 @@
 (unless (boundp '+supported-formats+)
   (defconstant +supported-formats+ (supported-format)))
 
+(deftype file-format () `(member ,@+supported-formats+))
+
+(declaim (ftype (function (simple-string) simple-string) safety-name))
+
+(defun safety-name (name)
+  (with-output-to-string (*standard-output*)
+    (loop :for c :across name
+          :do (if (invalid-charp c)
+                  (progn (write-char #\\) (write-char c))
+                  (write-char c)))))
+
+(defun filename (name type)
+  (format nil "~(~A~).~(~A~)" (safety-name name) type))
+
+(declaim (ftype (function (t) (values simple-string &optional)) ensure-name))
+
+(defun ensure-name (obj)
+  (etypecase obj
+    (string obj)
+    (symbol (symbol-name obj))
+    (package (package-name obj))
+    (asdf:component (asdf:component-name obj))
+    (function (symbol-name (millet:function-name obj)))))
+
+(deftype direction () '(member :lr :rl :bt))
+
 ;;; general utilities.
 
 (defun doc (system path)
@@ -67,6 +82,13 @@
                       path)))
 
 ;;;; SYSTEM-GRAPH.
+
+(declaim
+ (ftype (function
+         ((or symbol asdf:system) &key (:type file-format)
+          (:direction direction))
+         (values pathname &optional))
+        system-graph))
 
 (defun system-graph (system &key (type :png) direction)
   #.(doc :torch "doc/system-graph.md")
@@ -94,6 +116,13 @@
 
 ;;;; PACKAGE-GRAPH.
 
+(declaim
+ (ftype (function
+         ((or symbol string package) &key (:type file-format)
+          (:direction direction))
+         (values pathname &optional))
+        package-graph))
+
 (defun package-graph (package &key (type :png) direction)
   #.(doc :torch "doc/package-graph.md")
   (let ((namestring (filename (ensure-name package) type)))
@@ -115,6 +144,13 @@
 ;;;; FILE-GRAPH.
 
 (defun files (system) (asdf:component-children (asdf:find-system system)))
+
+(declaim
+ (ftype (function
+         ((or symbol string asdf:system) &key (:type file-format)
+          (:direction direction))
+         (values pathname &optional))
+        file-graph))
 
 (defun file-graph (system &key (type :png) direction)
   #.(doc :torch "doc/file-graph.md")
@@ -141,6 +177,11 @@
 
 ;;;; OBJECT-GRAPH.
 
+(declaim
+ (ftype (function (t &key (:type file-format) (:direction direction))
+         (values pathname &optional))
+        object-graph))
+
 (defun object-graph (object &key (type :png) direction)
   (let ((namestring (filename (ensure-name object) type)))
     (cl-dot:dot-graph
@@ -155,12 +196,14 @@
 (defmethod cl-dot:graph-object-node ((graph (eql 'object)) (c class))
   (make-instance 'cl-dot:node :attributes (list :label (class-name c))))
 
+(declaim (type list *ignored-class*))
+
 (defvar *ignored-class*
   '(built-in-class standard-class standard-object standard-generic-function t
     structure-object slot-object structure-class))
 
 (defun ignored-class-p (class)
-  (find (class-name class) *ignored-class* :test #'string=))
+  (find (the symbol (class-name class)) *ignored-class* :test #'string=))
 
 (defmethod cl-dot:graph-object-points-to ((graph (eql 'object)) (c class))
   (unless (ignored-class-p c)
@@ -198,13 +241,18 @@
 
 ;;; GRAPH.
 
-(defvar *builtin-hook* *macroexpand-hook*)
+(declaim (type function *builtin-hook*))
+
+(defvar *builtin-hook* (coerce *macroexpand-hook* 'function))
 
 (defvar *forms*)
+
+(declaim (type list *packages*))
 
 (defvar *packages*)
 
 (defun target-symbolp (symbol)
+  (declare (optimize (speed 1)))
   (and (fboundp symbol)
        (find (package-name (symbol-package symbol)) *packages*
              :test #'string=)))
@@ -217,8 +265,11 @@
                        ((sb-int:comma-p elt) (flatten (sb-int:comma-expr elt)))
                        (t (list elt))))
                (alexandria:flatten form))))
-    (or (remove-if (complement (alexandria:conjoin #'symbolp #'target-symbolp))
-                   (delete-duplicates (flatten form) :from-end t))
+    (or (remove-if
+          (locally
+           (declare (optimize (speed 1)))
+           (complement (alexandria:conjoin #'symbolp #'target-symbolp)))
+          (delete-duplicates (flatten form) :from-end t))
         (throw :do-nothing nil))))
 
 (defun macroexpand-hook (expander form environment)
@@ -242,7 +293,7 @@
 
 (defun graph (system)
   (loop :for system :in (asdf:system-depends-on (asdf:find-system system))
-        :with loaded-systems = (asdf:already-loaded-systems)
+        :with loaded-systems :of-type list = (asdf:already-loaded-systems)
         :unless (and (not (listp system)) ; ignoring (:version ...)
                      (find system loaded-systems :test #'string-equal))
           :collect system :into result
@@ -313,9 +364,15 @@
         :when (= 1
                  (count (car node) graph
                         :test (lambda (subject edges)
+                                (declare (type list edges))
                                 (find subject edges :test #'eq))
                         :key #'cdr))
           :collect (car node)))
+
+(declaim
+ (ftype (function ((or symbol string) file-format list direction)
+         (values pathname &optional))
+        make-dot))
 
 (defun make-dot (name type objects direction)
   (let ((namestring (filename name type)))
@@ -378,7 +435,8 @@
           (graph
             (or system
                 (string-downcase
-                  (package-name (symbol-package (ensure-name function)))))))
+                  (package-name
+                    (symbol-package (millet:function-name function)))))))
          (privates (privates graph))
          (*codes* (make-hash-table :test #'eq))
          (*ignore-privates* ignore-privates))
@@ -386,6 +444,14 @@
     (make-dot function type (list (gethash function *codes*)) direction)))
 
 ;; debug use.
+
+(declaim
+ (ftype (function
+         ((or symbol string asdf:system) &key (:ignore-privates boolean)
+          (:ignore-standalone boolean) (:split boolean) (:direction direction)
+          (:package (or symbol string package)))
+         (values null &optional))
+        print-graph))
 
 (defun print-graph
        (system
@@ -420,4 +486,3 @@
                                  (gethash symbol *codes*)
                                  (when direction
                                    `((:rankdir ,(string direction)))))))))))
-
