@@ -24,7 +24,9 @@
 
 (defstruct uri
   (uri (error "URI is required.") :type string :read-only t)
-  (method (error "METHOD is required.") :type http-method :read-only t)
+  (method (error "METHOD is required.")
+          :type (or http-method (unsigned-byte 16))
+          :read-only t)
   (submethod nil :type (or null string)))
 
 (defstruct (edge (:include uri)))
