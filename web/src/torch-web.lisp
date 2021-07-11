@@ -68,7 +68,6 @@
         uri-edges))
 
 (defun uri-edges (uri &optional root)
-  (sleep *interval*)
   (uiop:format! *trace-output* "~%REQUEST: ~S" uri)
   (handler-case
       (dex:get (quri:render-uri (quri:merge-uris uri (or root "")))
@@ -135,6 +134,7 @@
                                            :method (edge-method edge)
                                            :edges nil)))
                        ((internal-link-p (edge-uri edge) uri)
+                        (sleep *interval*)
                         (rec
                           (setf (gethash (edge-uri edge) known-nodes)
                                   (make-node :uri (edge-uri edge)
