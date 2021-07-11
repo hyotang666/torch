@@ -64,7 +64,8 @@
   (sleep *interval*)
   (uiop:format! *trace-output* "~%REQUEST: ~S" uri)
   (handler-case
-      (dex:get (quri:merge-uris uri (or root "")) :cookie-jar *cookie*)
+      (dex:get (quri:render-uri (quri:merge-uris uri (or root "")))
+               :cookie-jar *cookie*)
     (dex:http-request-failed (c)
       (list
         (make-failed :uri uri
