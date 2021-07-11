@@ -2,10 +2,9 @@
 (in-package :asdf)
 (defsystem "torch-web"
   :version
-  "0.6.1"
+  "0.7.0"
   :depends-on
   (
-   "cl-dot" ; Interface for graphviz.
    "quri" ; URI object.
    "dexador" ; HTTP client.
    "cl-cookie" ; Cookie.

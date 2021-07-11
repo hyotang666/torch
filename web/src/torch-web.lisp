@@ -6,108 +6,198 @@
 
 (in-package :torch-web)
 
+;;;; TYPES
+
+(deftype algorithm ()
+  "Graph layout algorithms of Graphviz."
+  '(member :dot :neato :twopi :circo :fdp :sfdp :patchwork :osage))
+
 ;;;; SPECIAL VARIABLES
 
 (defvar *cookie* (cl-cookie:make-cookie-jar))
 
 ;;;; INTERMIDIATE OBJECTS.
 
-(defstruct uri uri method submethod)
+(deftype http-method () '(member :get :post))
 
-(defstruct (node (:constructor %make-node) (:include uri)) edges)
+(defstruct uri
+  (uri (error "URI is required.") :type string :read-only t)
+  (method (error "METHOD is required.") :type http-method :read-only t)
+  (submethod nil :type (or null string)))
 
 (defstruct (edge (:include uri)))
+
+(defstruct (node (:include uri))
+  (edges nil :type list ; of-type (or edge failed)
+         ))
 
 (defstruct (failed (:include uri)) message)
 
 ;;;; CONSTRUCTOR
+;;; CLHS does not guarantee AREF is the 'ONLY ONE' function that be able to ignore fill-pointer.
+;;; 'ANY' functions and macros may ignore fill-pointer.
 
-(defun make-node (uri method)
-  ;; Canonicalize.
-  (setf method (intern (string-upcase method) :keyword))
-  ;; Body
-  (%make-node :uri uri :method method :edges (uri-edges uri)))
+(declaim
+ (ftype (function (vector)
+         (values (integer 0 #.array-total-size-limit) &optional))
+        vector-length))
+
+(defun vector-length (vector)
+  "Return vector length. Always interpret fill pointer if exists."
+  (if (array-has-fill-pointer-p vector)
+      (fill-pointer vector)
+      (length vector)))
 
 (defun form-submethod (form)
   (loop :for input :across (clss:select "input[name=method]" form)
         :thereis (plump:attribute input "value")))
 
-(defun uri-edges (uri)
-  (handler-case (values (dex:get uri :cookie-jar *cookie*))
+(defvar *interval* 2)
+
+(declaim
+ (ftype (function (simple-string &optional (or null simple-string))
+         (values list ; of-type (or edges failed)
+                 &optional))
+        uri-edges))
+
+(defun uri-edges (uri &optional root)
+  (sleep *interval*)
+  (uiop:format! *trace-output* "~%REQUEST: ~S" uri)
+  (handler-case
+      (dex:get (quri:merge-uris uri (or root "")) :cookie-jar *cookie*)
     (dex:http-request-failed (c)
       (list
-        (make-failed :uri (dex:request-uri c)
-                     :method (princ-to-string (dex:response-status c))
+        (make-failed :uri uri
+                     :method (dex:response-status c)
                      :message (princ-to-string (type-of c)))))
-    (:no-error (body)
-      (nconc
-        (loop :for form :across (clss:select "form" (plump:parse body))
-              :for action := (plump:attribute form "action")
-              :for method := (plump:attribute form "method")
-              :for next := (quri:merge-uris action uri)
-              :for new
-                   := (make-edge :uri next
-                                 :method method
-                                 :submethod (form-submethod form))
-              :collect new)
-        (loop :for anchor :across (clss:select "a" (plump:parse body))
-              :collect (make-edge :uri (quri:merge-uris
-                                         (plump:attribute anchor "href") uri)
-                                  :method "get"))))))
+    (usocket:unknown-error (c)
+      (warn "Ignore ~S due to ~A" uri (prin1-to-string c)))
+    (:no-error (body status header quri socket)
+      (declare (ignore status quri socket))
+      (let* ((content-type (gethash "content-type" header))
+             (dom
+              (when (uiop:string-prefix-p "text/html" content-type)
+                (plump:parse body))))
+        (if (not dom)
+            (list (make-edge :uri uri :method :get))
+            (uiop:while-collecting (acc)
+              (loop :with forms := (clss:select "form" dom)
+                    :for i :upfrom 0 :below (vector-length forms)
+                    :for action := (plump:attribute (aref forms i) "action")
+                    :when action
+                      :do (acc
+                           (make-edge :uri action
+                                      :method (intern
+                                                (string-upcase
+                                                  (plump:attribute
+                                                    (aref forms i) "method"))
+                                                :keyword)
+                                      :submethod (form-submethod
+                                                   (aref forms i)))))
+              (loop :with anchors = (clss:select "a" dom)
+                    :for i :upfrom 0 :below (vector-length anchors)
+                    :for href := (plump:attribute (aref anchors i) "href")
+                    :when (and href
+                               (not (equal "/" href))
+                               (not (uiop:string-prefix-p "#" href)))
+                      :do (acc (make-edge :uri href :method :get)))))))))
 
 ;;;; SITE-GRAPH
 
+(defun internal-link-p (link root)
+  (or (uiop:string-prefix-p "/" link) (uiop:string-prefix-p root link)))
+
+(declaim
+ (ftype (function (simple-string &optional (or null cl-cookie:cookie-jar))
+         (values hash-table ; as (hash-table simple-string node)
+                 &optional))
+        make-site-table))
+
 (defun make-site-table (uri &optional cookie)
-  (setf uri (quri:uri uri))
-  (unless (quri:uri-path uri)
-    (setf (quri:uri-path uri) "/"))
   (let ((*cookie* (or cookie *cookie*))
         (known-nodes (make-hash-table :test #'equal)))
-    (labels ((rec (node)
-               (loop :for edge :in (node-edges node)
-                     :if (or (typep edge 'failed)
-                             (gethash (princ-to-string (edge-uri edge))
-                                      known-nodes)
-                             (eq :post (edge-method edge)))
-                       :do '#:nothing
-                     :else
-                       :do (rec
-                             (setf (gethash (princ-to-string (edge-uri edge))
-                                            known-nodes)
-                                     (make-node (edge-uri edge)
-                                                (edge-method edge)))))))
-      (rec
-        (setf (gethash (princ-to-string uri) known-nodes)
-                (make-node uri :get))))
+    (labels ((already-seen-p (edge)
+               (gethash (edge-uri edge) known-nodes))
+             (rec (node)
+               (dolist (edge (node-edges node))
+                 (cond ((or (failed-p edge) (already-seen-p edge)) nil)
+                       ((eq :post (edge-method edge))
+                        (setf (gethash (edge-uri edge) known-nodes)
+                                (make-node :uri (edge-uri edge)
+                                           :method (edge-method edge)
+                                           :edges nil)))
+                       ((internal-link-p (edge-uri edge) uri)
+                        (rec
+                          (setf (gethash (edge-uri edge) known-nodes)
+                                  (make-node :uri (edge-uri edge)
+                                             :method (edge-method edge)
+                                             :edges (uri-edges (edge-uri edge)
+                                                               uri)))))
+                       (t
+                        (setf (gethash (edge-uri edge) known-nodes)
+                                (make-node :uri (edge-uri edge)
+                                           :method (edge-method edge)
+                                           :edges nil)))))))
+      (unless (find uri '("/" "#") :test #'equal)
+        (rec
+          (setf (gethash uri known-nodes)
+                  (make-node :uri uri :method :get :edges (uri-edges uri))))))
     known-nodes))
 
 (defun print-nodes (nodes)
   (pprint-logical-block (*standard-output* nil)
     (format t "digraph {~2I")
     (let ((id-table (make-hash-table :test #'equal)))
-      (loop :for node :being :each :hash-value :of nodes :using (:hash-key key)
+      (loop :for node :being :each :hash-value :of nodes :using (:hash-key uri)
             :for id :upfrom 1
             :do (format t "~:@_~S [label=~S];"
-                        (setf (gethash key id-table) (princ-to-string id))
-                        (quri:uri-path (node-uri node))))
-      (loop :for node :being :each :hash-value :of nodes :using (:hash-key key)
+                        (setf (gethash uri id-table) (princ-to-string id))
+                        (handler-case (quri:url-decode (node-uri node))
+                          (error ()
+                            (node-uri node)))))
+      (loop :for node :being :each :hash-value :of nodes :using (:hash-key uri)
             :do (loop :for edge :in (node-edges node)
-                      :do (format t "~:@_~S -> ~S[label=~S];"
-                                  (gethash key id-table)
-                                  (gethash (princ-to-string (uri-uri edge))
-                                           id-table)
-                                  (uri-method edge)))))
+                      :for id := (gethash (uri-uri edge) id-table)
+                      :when id
+                        :do (format t "~:@_~S -> ~S[label=~A];"
+                                    (gethash uri id-table) id (uri-method edge))
+                      :else
+                        :do (warn "Ignore ~S" edge))))
     (format t "~%}")))
 
 (defun site-graph (uri &optional cookie)
-  (let ((dot-path cl-dot:*dot-path*)
-        (format (format nil "-T~(~a~)" :svg))
-        (dot-string
-         (with-output-to-string (*standard-output*)
-           (print-nodes (make-site-table uri cookie)))))
-    (uiop:run-program (list dot-path format "-o" "site-graph.svg")
-                      :input (make-string-input-stream dot-string)
-                      :output *standard-output*)))
+  (table-graph (make-site-table uri cookie)))
+
+(defun which (algorithm)
+  (let* ((search (format nil "~(~A~)" algorithm))
+         (command (format nil "which ~A" search)))
+    (multiple-value-bind (exe message status)
+        (uiop:run-program command
+                          :ignore-error-status t
+                          :output '(:string :stripped t))
+      (declare (ignore message))
+      (case status
+        (0 exe)
+        (1 (error "~S is nonexistent or not executable." search))
+        (2 (error "Invalid option is specified. ~S" command))
+        (otherwise (error "Internal logical error. NIY."))))))
+
+(defun table-graph
+       (table &key (algorithm :neato) (file "site-graph") (type :svg))
+  (let ((dot-string
+         (with-output-to-string (*standard-output*) (print-nodes table))))
+    (uiop:run-program
+      (list (which algorithm) (format nil "-T~(~A~)" type) "-o"
+            (format nil "~A.~(~A~)" file type))
+      :input (make-string-input-stream dot-string)
+      :output *standard-output*
+      :error-output *error-output*)))
+
+(defun save-graph (table &optional (name "graph"))
+  (with-open-file (*standard-output* name :direction :output
+                   :if-does-not-exist :create
+                   :if-exists :supersede)
+    (print-nodes table)))
 
 ;;;; WITH-COOKIE
 
