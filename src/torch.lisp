@@ -21,8 +21,9 @@
 
 ;;; helpers
 
-(defun filename (name type)
-  (format nil "~(~A~).~(~A~)" (safety-name name) type))
+(defvar *invalid-chars* '(#\* #\? #\/ #\\ #\Space))
+
+(defun invalid-charp (c) (find c *invalid-chars*))
 
 (defun safety-name (name)
   (with-output-to-string (*standard-output*)
@@ -31,9 +32,8 @@
                   (progn (write-char #\\) (write-char c))
                   (write-char c)))))
 
-(defvar *invalid-chars* '(#\* #\? #\/ #\\ #\Space))
-
-(defun invalid-charp (c) (find c *invalid-chars*))
+(defun filename (name type)
+  (format nil "~(~A~).~(~A~)" (safety-name name) type))
 
 (defun ensure-name (obj)
   (typecase obj
@@ -41,6 +41,23 @@
     (package (package-name obj))
     (asdf:component (asdf:component-name obj))
     (function (millet:function-name obj))))
+
+(defun supported-format-string ()
+  (flet ((dot ()
+           (uiop:run-program "dot -T?"
+                             :ignore-error-status t
+                             :error-output :string)))
+    (second (uiop:split-string (nth-value 1 (dot)) :separator ":" :max 2))))
+
+(defun supported-format ()
+  (let ((*package* (find-package :keyword)))
+    (with-input-from-string (s (supported-format-string))
+      (loop :for k = (read s nil nil)
+            :while k
+            :collect k))))
+
+(unless (boundp '+supported-formats+)
+  (defconstant +supported-formats+ (supported-format)))
 
 ;;; general utilities.
 
@@ -97,6 +114,8 @@
 
 ;;;; FILE-GRAPH.
 
+(defun files (system) (asdf:component-children (asdf:find-system system)))
+
 (defun file-graph (system &key (type :png) direction)
   #.(doc :torch "doc/file-graph.md")
   (let ((namestring (filename (ensure-name system) type)))
@@ -107,8 +126,6 @@
       namestring
       :format type)
     (pathname namestring)))
-
-(defun files (system) (asdf:component-children (asdf:find-system system)))
 
 (defmethod cl-dot:graph-object-node
            ((graph (eql 'file)) (node asdf:cl-source-file))
@@ -164,23 +181,6 @@
 
 (defparameter *split* nil)
 
-(defun supported-format ()
-  (let ((*package* (find-package :keyword)))
-    (with-input-from-string (s (supported-format-string))
-      (loop :for k = (read s nil nil)
-            :while k
-            :collect k))))
-
-(defun supported-format-string ()
-  (flet ((dot ()
-           (uiop:run-program "dot -T?"
-                             :ignore-error-status t
-                             :error-output :string)))
-    (second (uiop:split-string (nth-value 1 (dot)) :separator ":" :max 2))))
-
-(unless (boundp '+supported-formats+)
-  (defconstant +supported-formats+ (supported-format)))
-
 ;;; objects.
 
 (defstruct (code (:copier nil) (:predicate nil))
@@ -204,6 +204,23 @@
 
 (defvar *packages*)
 
+(defun target-symbolp (symbol)
+  (and (fboundp symbol)
+       (find (package-name (symbol-package symbol)) *packages*
+             :test #'string=)))
+
+(defun form (form)
+  (labels ((flatten (form)
+             (mapcan
+               (lambda (elt)
+                 (cond #+sbcl
+                       ((sb-int:comma-p elt) (flatten (sb-int:comma-expr elt)))
+                       (t (list elt))))
+               (alexandria:flatten form))))
+    (or (remove-if (complement (alexandria:conjoin #'symbolp #'target-symbolp))
+                   (delete-duplicates (flatten form) :from-end t))
+        (throw :do-nothing nil))))
+
 (defun macroexpand-hook (expander form environment)
   (catch :do-nothing
     (cond
@@ -223,23 +240,6 @@
                :do (pushnew (form (cddr option)) *forms* :test #'equal)))))
   (funcall *builtin-hook* expander form environment))
 
-(defun form (form)
-  (labels ((flatten (form)
-             (mapcan
-               (lambda (elt)
-                 (cond #+sbcl
-                       ((sb-int:comma-p elt) (flatten (sb-int:comma-expr elt)))
-                       (t (list elt))))
-               (alexandria:flatten form))))
-    (or (remove-if (complement (alexandria:conjoin #'symbolp #'target-symbolp))
-                   (delete-duplicates (flatten form) :from-end t))
-        (throw :do-nothing nil))))
-
-(defun target-symbolp (symbol)
-  (and (fboundp symbol)
-       (find (package-name (symbol-package symbol)) *packages*
-             :test #'string=)))
-
 (defun graph (system)
   (loop :for system :in (asdf:system-depends-on (asdf:find-system system))
         :with loaded-systems = (asdf:already-loaded-systems)
@@ -257,7 +257,20 @@
         (asdf:load-system system :force t)
         *forms*))))
 
-;;; DOT
+;;;; CODE-GRAPH.
+
+(defun external-symbolp (symbol)
+  (eq :external (nth-value 1
+                           (find-symbol (symbol-name symbol)
+                                        (symbol-package symbol)))))
+
+(defun symbol-names-file-p (symbol)
+  (let ((system
+         (asdf:find-system
+           (string-downcase (package-name (symbol-package symbol))) nil)))
+    (when system
+      (values (gethash (string-downcase (symbol-name symbol))
+                       (asdf:component-children-by-name system))))))
 
 (defmethod cl-dot:graph-object-node ((graph (eql 'code)) (object code))
   (make-instance 'cl-dot:node
@@ -274,18 +287,13 @@
                                             (symbol-names-file-p :blue)
                                             (t :black)))))
 
-(defun external-symbolp (symbol)
-  (eq :external (nth-value 1
-                           (find-symbol (symbol-name symbol)
-                                        (symbol-package symbol)))))
-
-(defun symbol-names-file-p (symbol)
-  (let ((system
-         (asdf:find-system
-           (string-downcase (package-name (symbol-package symbol))) nil)))
-    (when system
-      (values (gethash (string-downcase (symbol-name symbol))
-                       (asdf:component-children-by-name system))))))
+(defun edges (code)
+  (append
+    (loop :for common :in (code-commons code)
+          :collect (or (gethash common *codes*) common))
+    (unless *ignore-privates*
+      (loop :for private :in (code-privates code)
+            :collect (or (gethash private *codes*) private)))))
 
 (defmethod cl-dot:graph-object-points-to ((graph (eql 'code)) (object code))
   (edges object))
@@ -297,15 +305,42 @@
                                               :red
                                               :black))))
 
-(defun edges (code)
-  (append
-    (loop :for common :in (code-commons code)
-          :collect (or (gethash common *codes*) common))
-    (unless *ignore-privates*
-      (loop :for private :in (code-privates code)
-            :collect (or (gethash private *codes*) private)))))
+(defun standalone-p (code)
+  (typecase code (symbol (fboundp code)) (code (null (code-commons code)))))
 
-;;;; CODE-GRAPH.
+(defun privates (graph)
+  (loop :for node :in graph
+        :when (= 1
+                 (count (car node) graph
+                        :test (lambda (subject edges)
+                                (find subject edges :test #'eq))
+                        :key #'cdr))
+          :collect (car node)))
+
+(defun make-dot (name type objects direction)
+  (let ((namestring (filename name type)))
+    (cl-dot:dot-graph
+      (apply #'cl-dot:generate-graph-from-roots 'code objects
+             (when direction
+               `((:rankdir ,(string direction)))))
+      namestring
+      :format type)
+    (pathname namestring)))
+
+(defun setup (graph privates &optional (*codes* (make-hash-table :test #'eq)))
+  (dolist (node graph *codes*)
+    (let ((my-privates (intersection (cdr node) privates))
+          (code (gethash (car node) *codes*)))
+      (if code ; it is method.
+          (setf (code-privates code) (union (code-privates code) my-privates)
+                (code-commons code)
+                  (union (code-commons code)
+                         (set-difference (cdr node) my-privates)))
+          (setf (gethash (car node) *codes*)
+                  (make-code :name (car node)
+                             :privates my-privates
+                             :commons (set-difference (cdr node)
+                                                      my-privates)))))))
 
 (defun code-graph
        (system
@@ -333,17 +368,22 @@
                     :collect (make-dot symbol type (gethash symbol *codes*)
                                        direction))))))
 
-(defun standalone-p (code)
-  (typecase code (symbol (fboundp code)) (code (null (code-commons code)))))
+;;;; FUNCTION-GRAPH.
 
-(defun privates (graph)
-  (loop :for node :in graph
-        :when (= 1
-                 (count (car node) graph
-                        :test (lambda (subject edges)
-                                (find subject edges :test #'eq))
-                        :key #'cdr))
-          :collect (car node)))
+(defun function-graph
+       (function
+        &key (ignore-privates *ignore-privates*) (type :png) system direction)
+  #.(doc :torch "doc/function-graph.md")
+  (let* ((graph
+          (graph
+            (or system
+                (string-downcase
+                  (package-name (symbol-package (ensure-name function)))))))
+         (privates (privates graph))
+         (*codes* (make-hash-table :test #'eq))
+         (*ignore-privates* ignore-privates))
+    (setup graph privates *codes*)
+    (make-dot function type (list (gethash function *codes*)) direction)))
 
 ;; debug use.
 
@@ -381,44 +421,3 @@
                                  (when direction
                                    `((:rankdir ,(string direction)))))))))))
 
-(defun make-dot (name type objects direction)
-  (let ((namestring (filename name type)))
-    (cl-dot:dot-graph
-      (apply #'cl-dot:generate-graph-from-roots 'code objects
-             (when direction
-               `((:rankdir ,(string direction)))))
-      namestring
-      :format type)
-    (pathname namestring)))
-
-(defun setup (graph privates &optional (*codes* (make-hash-table :test #'eq)))
-  (dolist (node graph *codes*)
-    (let ((my-privates (intersection (cdr node) privates))
-          (code (gethash (car node) *codes*)))
-      (if code ; it is method.
-          (setf (code-privates code) (union (code-privates code) my-privates)
-                (code-commons code)
-                  (union (code-commons code)
-                         (set-difference (cdr node) my-privates)))
-          (setf (gethash (car node) *codes*)
-                  (make-code :name (car node)
-                             :privates my-privates
-                             :commons (set-difference (cdr node)
-                                                      my-privates)))))))
-
-;;;; FUNCTION-GRAPH.
-
-(defun function-graph
-       (function
-        &key (ignore-privates *ignore-privates*) (type :png) system direction)
-  #.(doc :torch "doc/function-graph.md")
-  (let* ((graph
-          (graph
-            (or system
-                (string-downcase
-                  (package-name (symbol-package (ensure-name function)))))))
-         (privates (privates graph))
-         (*codes* (make-hash-table :test #'eq))
-         (*ignore-privates* ignore-privates))
-    (setup graph privates *codes*)
-    (make-dot function type (list (gethash function *codes*)) direction)))
