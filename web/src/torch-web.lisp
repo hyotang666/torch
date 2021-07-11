@@ -150,29 +150,17 @@
                   (make-node :uri uri :method :get :edges (uri-edges uri))))))
     known-nodes))
 
-(defun print-nodes (nodes)
-  (pprint-logical-block (*standard-output* nil)
-    (format t "digraph {~2I")
-    (let ((id-table (make-hash-table :test #'equal)))
-      (loop :for node :being :each :hash-value :of nodes :using (:hash-key uri)
-            :for id :of-type (integer 0 #.most-positive-fixnum) :upfrom 1
-            :do (format t "~:@_~S [label=~S];"
-                        (setf (gethash uri id-table) (princ-to-string id))
-                        (handler-case (quri:url-decode (node-uri node))
-                          (error ()
-                            (node-uri node)))))
-      (loop :for node :being :each :hash-value :of nodes :using (:hash-key uri)
-            :do (loop :for edge :in (node-edges node)
-                      :for id := (gethash (uri-uri edge) id-table)
-                      :when id
-                        :do (format t "~:@_~S -> ~S[label=~A];"
-                                    (gethash uri id-table) id (uri-method edge))
-                      :else
-                        :do (warn "Ignore ~S" edge))))
-    (format t "~%}")))
+;;;; CL-DOT
 
-(defun site-graph (uri &optional cookie)
-  (table-graph (make-site-table uri cookie)))
+(defvar *site-table*)
+
+(defmethod cl-dot:graph-object-node ((graph (eql 'web)) (node node))
+  (make-instance 'cl-dot:node
+                 :attributes (list :label (decode-uri (node-uri node)))))
+
+(defmethod cl-dot:graph-object-points-to ((graph (eql 'web)) (node node))
+  (loop :for edge :in (node-edges node)
+        :collect (gethash (uri-uri edge) *site-table*)))
 
 (defun which (algorithm)
   (let* ((search (format nil "~(~A~)" algorithm))
@@ -188,22 +176,27 @@
         (2 (error "Invalid option is specified. ~S" command))
         (otherwise (error "Internal logical error. NIY."))))))
 
-(defun table-graph
-       (table &key (algorithm :neato) (file "site-graph") (type :svg))
-  (let ((dot-string
-         (with-output-to-string (*standard-output*) (print-nodes table))))
-    (uiop:run-program
-      (list (which algorithm) (format nil "-T~(~A~)" type) "-o"
-            (format nil "~A.~(~A~)" file type))
-      :input (make-string-input-stream dot-string)
-      :output *standard-output*
-      :error-output *error-output*)))
+(declaim
+ (ftype (function
+         (simple-string &key (:file simple-string)
+          (:format (member . #.torch:+supported-formats+))
+          (:direction (member :lr :rl :bt)) (:algorithm algorithm))
+         (values pathname &optional))
+        site-graph2))
 
-(defun save-graph (table &optional (name "graph"))
-  (with-open-file (*standard-output* name :direction :output
-                   :if-does-not-exist :create
-                   :if-exists :supersede)
-    (print-nodes table)))
+(defun site-graph
+       (uri &key (file "site-graph") (format :svg) direction (algorithm :sfdp))
+  (let ((namestring (the simple-string (torch::filename file format)))
+        (cl-dot:*dot-path* (which algorithm))
+        (*site-table* (make-site-table uri)))
+    (cl-dot:dot-graph
+      (apply #'cl-dot:generate-graph-from-roots 'web
+             (alexandria:hash-table-values *site-table*)
+             (when direction
+               `((:rankdir ,(string direction)))))
+      namestring
+      :format format)
+    (pathname namestring)))
 
 ;;;; WITH-COOKIE
 

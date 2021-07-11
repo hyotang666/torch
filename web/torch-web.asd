@@ -2,7 +2,7 @@
 (in-package :asdf)
 (defsystem "torch-web"
   :version
-  "0.7.2"
+  "0.8.0"
   :depends-on
   (
    "quri" ; URI object.
@@ -10,6 +10,8 @@
    "cl-cookie" ; Cookie.
    "plump" ; DOM.
    "clss" ; CSS like selector.
+   "cl-dot" ; Graphviz dot language generator.
+   "alexandria" ; Public domain utilities.
    )
   :pathname
   "src/"
