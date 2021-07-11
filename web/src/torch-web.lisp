@@ -18,6 +18,10 @@
 
 (defvar *cookie* (cl-cookie:make-cookie-jar))
 
+(defvar *interval* 2)
+
+(declaim (type (unsigned-byte 8) *interval*))
+
 ;;;; INTERMIDIATE OBJECTS.
 
 (deftype http-method () '(member :get :post))
@@ -37,7 +41,12 @@
 
 (defstruct (failed (:include uri)) message)
 
-;;;; CONSTRUCTOR
+(defun decode-uri (uri)
+  (handler-case (quri:url-decode uri)
+    (error ()
+      uri)))
+
+;;;; SITE-TABLE
 ;;; CLHS does not guarantee AREF is the 'ONLY ONE' function that be able to ignore fill-pointer.
 ;;; 'ANY' functions and macros may ignore fill-pointer.
 
@@ -56,10 +65,6 @@
   (loop :with inputs = (clss:select "input[name=method]" form)
         :for i :upfrom 0 :below (vector-length inputs)
         :thereis (plump:attribute (aref inputs i) "value")))
-
-(defvar *interval* 2)
-
-(declaim (type (unsigned-byte 8) *interval*))
 
 (declaim
  (ftype (function (simple-string &optional (or null simple-string))
@@ -108,8 +113,6 @@
                                (not (equal "/" href))
                                (not (uiop:string-prefix-p "#" href)))
                       :do (acc (make-edge :uri href :method :get)))))))))
-
-;;;; SITE-GRAPH
 
 (defun internal-link-p (link root)
   (or (uiop:string-prefix-p "/" link) (uiop:string-prefix-p root link)))
@@ -184,7 +187,7 @@
           (:format (member . #.torch:+supported-formats+))
           (:direction (member :lr :rl :bt)) (:algorithm algorithm))
          (values pathname &optional))
-        site-graph2))
+        site-graph))
 
 (defun site-graph
        (uri &key (file "site-graph") (format :svg) direction (algorithm :sfdp))

@@ -25,9 +25,8 @@
          (asdf:find-system
            (string-downcase (package-name (symbol-package symbol))) nil)))
     (when system
-      (values
-        (gethash (string-downcase (symbol-name symbol))
-                 (asdf:component-children-by-name system))))))
+      (values (gethash (string-downcase (symbol-name symbol))
+                       (asdf:component-children-by-name system))))))
 
 (defmethod cl-dot:graph-object-points-to ((graph (eql 'code)) (object code))
   (edges object))
