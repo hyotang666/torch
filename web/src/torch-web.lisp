@@ -192,14 +192,22 @@
 (defun site-graph
        (uri &key (file "site-graph") (format :svg) direction (algorithm :sfdp))
   (let ((namestring (the simple-string (torch::filename file format)))
-        (cl-dot:*dot-path* (which algorithm))
-        (*site-table* (make-site-table uri)))
+        (*site-table* (make-site-table uri))
+        (cl-dot:*dot-path*
+         (if direction
+             (which algorithm)
+             cl-dot:*dot-path*))
+        (cl-dot:*neato-path*
+         (if direction
+             cl-dot:*neato-path*
+             (which algorithm))))
     (cl-dot:dot-graph
       (apply #'cl-dot:generate-graph-from-roots 'web
              (alexandria:hash-table-values *site-table*)
              (when direction
                `((:rankdir ,(string direction)))))
       namestring
+      :directed direction
       :format format)
     (pathname namestring)))
 
