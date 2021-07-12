@@ -183,9 +183,8 @@
 
 (declaim
  (ftype (function
-         (simple-string &key (:file simple-string)
-          (:format (member . #.torch:+supported-formats+))
-          (:direction (member :lr :rl :bt)) (:algorithm algorithm))
+         (simple-string &key (:file simple-string) (:format torch:file-format)
+          (:direction torch:direction) (:algorithm algorithm))
          (values pathname &optional))
         site-graph))
 

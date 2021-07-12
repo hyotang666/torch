@@ -2,7 +2,7 @@
 (in-package :asdf)
 (defsystem "torch-web"
   :version
-  "0.9.0"
+  "0.9.1"
   :depends-on
   (
    "quri" ; URI object.
@@ -12,6 +12,7 @@
    "clss" ; CSS like selector.
    "cl-dot" ; Graphviz dot language generator.
    "alexandria" ; Public domain utilities.
+   "torch" ; Visualize graphs. Especially for types.
    )
   :pathname
   "src/"
