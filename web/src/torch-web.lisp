@@ -178,22 +178,50 @@
 
 ;;;; QUERIES
 
-(defun who-refs (uri table)
-  (loop :for node-uri :being :each :hash-key :of table :using (:hash-value node)
-        :if (gethash uri (node-edges node))
-          :collect node))
+(declaim
+ (ftype (function (cl-dot::attributes-mixin) (values simple-string &optional))
+        label-of))
 
-(defun external-links (root table)
-  (loop :for node-uri :being :each :hash-key :of table :using (:hash-value node)
-        :if (not (internal-link-p node-uri root))
-          :collect node))
+(defun label-of (attributes-mixin)
+  (getf (cl-dot::attributes-of attributes-mixin) :label ""))
 
-(defun resource-links (root table)
-  ;; KLUDGE: Should I introduce RESOURCE object?
-  (loop :for node-uri :being :each :hash-key :of table :using (:hash-value node)
-        :if (and (= 1 (hash-table-count (node-edges node)))
-                 (internal-link-p node-uri root))
-          :collect node))
+(defgeneric who-refs (uri repository)
+  (:method ((uri simple-string) (table hash-table))
+    (loop :for node-uri :being :each :hash-key :of table :using
+               (:hash-value node)
+          :if (gethash uri (node-edges node))
+            :collect node))
+  (:method ((uri simple-string) (graph cl-dot::graph))
+    (loop :for edge :in (cl-dot::edges-of graph)
+          :for target := (cl-dot::target-of edge)
+          :if (equal uri (label-of target))
+            :collect (cl-dot::source-of edge) :into acc
+          :finally (return
+                    (delete-duplicates acc :key #'label-of :test #'equal)))))
+
+(defgeneric external-links (root repository)
+  (:method ((root simple-string) (table hash-table))
+    (loop :for node-uri :being :each :hash-key :of table :using
+               (:hash-value node)
+          :if (not (internal-link-p node-uri root))
+            :collect node))
+  (:method ((root simple-string) (graph cl-dot::graph))
+    (loop :for node :in (cl-dot::nodes-of graph)
+          :if (not (internal-link-p (label-of node) root))
+            :collect node)))
+
+(defgeneric resource-links (root repository)
+  (:method ((root simple-string) (table hash-table))
+    ;; KLUDGE: Should I introduce RESOURCE object?
+    (loop :for node-uri :being :each :hash-key :of table :using
+               (:hash-value node)
+          :if (and (= 1 (hash-table-count (node-edges node)))
+                   (internal-link-p node-uri root))
+            :collect node))
+  (:method ((hint simple-string) (graph cl-dot::graph))
+    (loop :for node :in (cl-dot::nodes-of graph)
+          :if (search hint (label-of node))
+            :collect node)))
 
 ;;;; CL-DOT
 
