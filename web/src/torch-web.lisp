@@ -33,14 +33,16 @@
           :read-only t)
   (submethod nil :type (or null string)))
 
-(defstruct (edge (:include uri)))
-
 (defstruct (node (:include uri))
   (edges ; of-type (hash-table uri (or edge failed))
          (make-hash-table :test #'equal)
          :type hash-table))
 
+(defstruct (edge (:include uri)))
+
 (defstruct (failed (:include uri)) message)
+
+(defun add (edge edges) (setf (gethash (uri-uri edge) edges) edge))
 
 (defun decode-uri (uri)
   (handler-case (quri:url-decode uri)
@@ -80,10 +82,11 @@
         (dex:get (quri:render-uri (quri:merge-uris uri (or root "")))
                  :cookie-jar *cookie*)
       (dex:http-request-failed (c)
-        (setf (gethash uri edges)
-                (make-failed :uri uri
-                             :method (dex:response-status c)
-                             :message (princ-to-string (type-of c)))))
+        (add
+          (make-failed :uri uri
+                       :method (dex:response-status c)
+                       :message (princ-to-string (type-of c)))
+          edges))
       (usocket:unknown-error (c)
         (warn "Ignore ~S due to ~A" uri (prin1-to-string c)))
       (:no-error (body status header quri socket)
@@ -93,30 +96,29 @@
                 (when (uiop:string-prefix-p "text/html" content-type)
                   (plump:parse body))))
           (if (not html)
-              (setf (gethash uri edges) (make-edge :uri uri :method :get))
+              (add (make-edge :uri uri :method :get) edges)
               (progn
                (loop :with forms := (clss:select "form" html)
                      :for i :upfrom 0 :below (vector-length forms)
                      :for action := (plump:attribute (aref forms i) "action")
                      :when action
-                       :do (setf (gethash action edges)
-                                   (make-edge :uri action
-                                              :method (intern
-                                                        (string-upcase
-                                                          (plump:attribute
-                                                            (aref forms i)
-                                                            "method"))
-                                                        :keyword)
-                                              :submethod (form-submethod
-                                                           (aref forms i)))))
+                       :do (add
+                             (make-edge :uri action
+                                        :method (intern
+                                                  (string-upcase
+                                                    (plump:attribute
+                                                      (aref forms i) "method"))
+                                                  :keyword)
+                                        :submethod (form-submethod
+                                                     (aref forms i)))
+                             edges))
                (loop :with anchors = (clss:select "a" html)
                      :for i :upfrom 0 :below (vector-length anchors)
                      :for href := (plump:attribute (aref anchors i) "href")
                      :when (and href
                                 (not (equal "/" href))
                                 (not (uiop:string-prefix-p "#" href)))
-                       :do (setf (gethash href edges)
-                                   (make-edge :uri href :method :get))))))))
+                       :do (add (make-edge :uri href :method :get) edges)))))))
     edges))
 
 (defun internal-link-p (link root)
