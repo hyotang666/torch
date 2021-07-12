@@ -182,6 +182,18 @@
         (otherwise (error "Internal logical error. NIY."))))))
 
 (declaim
+ (ftype (function (hash-table &key (:direction torch:direction))
+         (values cl-dot::graph &optional))
+        graph<-table))
+
+(defun graph<-table (table &key direction)
+  (let ((*site-table* table))
+    (apply #'cl-dot:generate-graph-from-roots 'web
+           (alexandria:hash-table-values *site-table*)
+           (when direction
+             `((:rankdir ,(string direction)))))))
+
+(declaim
  (ftype (function
          (simple-string &key (:file simple-string) (:format torch:file-format)
           (:direction torch:direction) (:algorithm algorithm))
@@ -191,7 +203,6 @@
 (defun site-graph
        (uri &key (file "site-graph") (format :svg) direction (algorithm :sfdp))
   (let ((namestring (the simple-string (torch::filename file format)))
-        (*site-table* (make-site-table uri))
         (cl-dot:*dot-path*
          (if direction
              (which algorithm)
@@ -200,14 +211,10 @@
          (if direction
              cl-dot:*neato-path*
              (which algorithm))))
-    (cl-dot:dot-graph
-      (apply #'cl-dot:generate-graph-from-roots 'web
-             (alexandria:hash-table-values *site-table*)
-             (when direction
-               `((:rankdir ,(string direction)))))
-      namestring
-      :directed direction
-      :format format)
+    (cl-dot:dot-graph (graph<-table (make-site-table uri) :direction direction)
+                      namestring
+                      :directed direction
+                      :format format)
     (pathname namestring)))
 
 ;;;; PRINT-LABELS
