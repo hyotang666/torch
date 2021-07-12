@@ -89,13 +89,13 @@
       (:no-error (body status header quri socket)
         (declare (ignore status quri socket))
         (let* ((content-type (gethash "content-type" header))
-               (dom
+               (html
                 (when (uiop:string-prefix-p "text/html" content-type)
                   (plump:parse body))))
-          (if (not dom)
+          (if (not html)
               (setf (gethash uri edges) (make-edge :uri uri :method :get))
               (progn
-               (loop :with forms := (clss:select "form" dom)
+               (loop :with forms := (clss:select "form" html)
                      :for i :upfrom 0 :below (vector-length forms)
                      :for action := (plump:attribute (aref forms i) "action")
                      :when action
@@ -109,7 +109,7 @@
                                                         :keyword)
                                               :submethod (form-submethod
                                                            (aref forms i)))))
-               (loop :with anchors = (clss:select "a" dom)
+               (loop :with anchors = (clss:select "a" html)
                      :for i :upfrom 0 :below (vector-length anchors)
                      :for href := (plump:attribute (aref anchors i) "href")
                      :when (and href
