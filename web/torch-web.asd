@@ -2,7 +2,7 @@
 (in-package :asdf)
 (defsystem "torch-web"
   :version
-  "0.12.0"
+  "0.12.1"
   :depends-on
   (
    "quri" ; URI object.

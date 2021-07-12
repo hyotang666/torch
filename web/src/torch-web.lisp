@@ -36,8 +36,9 @@
 (defstruct (edge (:include uri)))
 
 (defstruct (node (:include uri))
-  (edges nil :type list ; of-type (or edge failed)
-         ))
+  (edges ; of-type (hash-table uri (or edge failed))
+         (make-hash-table :test #'equal)
+         :type hash-table))
 
 (defstruct (failed (:include uri)) message)
 
@@ -68,51 +69,55 @@
 
 (declaim
  (ftype (function (simple-string &optional (or null simple-string))
-         (values list ; of-type (or edges failed)
+         (values hash-table ; of-type (hash-table uri (or edges failed))
                  &optional))
         uri-edges))
 
 (defun uri-edges (uri &optional root)
   (uiop:format! *trace-output* "~%REQUEST: ~S" uri)
-  (handler-case
-      (dex:get (quri:render-uri (quri:merge-uris uri (or root "")))
-               :cookie-jar *cookie*)
-    (dex:http-request-failed (c)
-      (list
-        (make-failed :uri uri
-                     :method (dex:response-status c)
-                     :message (princ-to-string (type-of c)))))
-    (usocket:unknown-error (c)
-      (warn "Ignore ~S due to ~A" uri (prin1-to-string c)))
-    (:no-error (body status header quri socket)
-      (declare (ignore status quri socket))
-      (let* ((content-type (gethash "content-type" header))
-             (dom
-              (when (uiop:string-prefix-p "text/html" content-type)
-                (plump:parse body))))
-        (if (not dom)
-            (list (make-edge :uri uri :method :get))
-            (uiop:while-collecting (acc)
-              (loop :with forms := (clss:select "form" dom)
-                    :for i :upfrom 0 :below (vector-length forms)
-                    :for action := (plump:attribute (aref forms i) "action")
-                    :when action
-                      :do (acc
-                           (make-edge :uri action
-                                      :method (intern
-                                                (string-upcase
-                                                  (plump:attribute
-                                                    (aref forms i) "method"))
-                                                :keyword)
-                                      :submethod (form-submethod
-                                                   (aref forms i)))))
-              (loop :with anchors = (clss:select "a" dom)
-                    :for i :upfrom 0 :below (vector-length anchors)
-                    :for href := (plump:attribute (aref anchors i) "href")
-                    :when (and href
-                               (not (equal "/" href))
-                               (not (uiop:string-prefix-p "#" href)))
-                      :do (acc (make-edge :uri href :method :get)))))))))
+  (let ((edges (make-hash-table :test #'equal)))
+    (handler-case
+        (dex:get (quri:render-uri (quri:merge-uris uri (or root "")))
+                 :cookie-jar *cookie*)
+      (dex:http-request-failed (c)
+        (setf (gethash uri edges)
+                (make-failed :uri uri
+                             :method (dex:response-status c)
+                             :message (princ-to-string (type-of c)))))
+      (usocket:unknown-error (c)
+        (warn "Ignore ~S due to ~A" uri (prin1-to-string c)))
+      (:no-error (body status header quri socket)
+        (declare (ignore status quri socket))
+        (let* ((content-type (gethash "content-type" header))
+               (dom
+                (when (uiop:string-prefix-p "text/html" content-type)
+                  (plump:parse body))))
+          (if (not dom)
+              (setf (gethash uri edges) (make-edge :uri uri :method :get))
+              (progn
+               (loop :with forms := (clss:select "form" dom)
+                     :for i :upfrom 0 :below (vector-length forms)
+                     :for action := (plump:attribute (aref forms i) "action")
+                     :when action
+                       :do (setf (gethash action edges)
+                                   (make-edge :uri action
+                                              :method (intern
+                                                        (string-upcase
+                                                          (plump:attribute
+                                                            (aref forms i)
+                                                            "method"))
+                                                        :keyword)
+                                              :submethod (form-submethod
+                                                           (aref forms i)))))
+               (loop :with anchors = (clss:select "a" dom)
+                     :for i :upfrom 0 :below (vector-length anchors)
+                     :for href := (plump:attribute (aref anchors i) "href")
+                     :when (and href
+                                (not (equal "/" href))
+                                (not (uiop:string-prefix-p "#" href)))
+                       :do (setf (gethash href edges)
+                                   (make-edge :uri href :method :get))))))))
+    edges))
 
 (defun internal-link-p (link root)
   (or (uiop:string-prefix-p "/" link) (uiop:string-prefix-p root link)))
@@ -129,26 +134,25 @@
     (labels ((already-seen-p (edge)
                (gethash (edge-uri edge) known-nodes))
              (rec (node)
-               (dolist (edge (node-edges node))
-                 (cond ((or (failed-p edge) (already-seen-p edge)) nil)
-                       ((eq :post (edge-method edge))
-                        (setf (gethash (edge-uri edge) known-nodes)
-                                (make-node :uri (edge-uri edge)
-                                           :method (edge-method edge)
-                                           :edges nil)))
-                       ((internal-link-p (edge-uri edge) uri)
-                        (sleep *interval*)
-                        (rec
-                          (setf (gethash (edge-uri edge) known-nodes)
-                                  (make-node :uri (edge-uri edge)
-                                             :method (edge-method edge)
-                                             :edges (uri-edges (edge-uri edge)
-                                                               uri)))))
-                       (t
-                        (setf (gethash (edge-uri edge) known-nodes)
-                                (make-node :uri (edge-uri edge)
-                                           :method (edge-method edge)
-                                           :edges nil)))))))
+               (loop :for edge :being :each :hash-value :of (node-edges node)
+                     :if (or (failed-p edge) (already-seen-p edge))
+                       :do '#:nothing
+                     :else :if (eq :post (edge-method edge))
+                       :do (setf (gethash (edge-uri edge) known-nodes)
+                                   (make-node :uri (edge-uri edge)
+                                              :method (edge-method edge)))
+                     :else :if (internal-link-p (edge-uri edge) uri)
+                       :do (sleep *interval*)
+                           (rec
+                             (setf (gethash (edge-uri edge) known-nodes)
+                                     (make-node :uri (edge-uri edge)
+                                                :method (edge-method edge)
+                                                :edges (uri-edges
+                                                         (edge-uri edge) uri))))
+                     :else
+                       :do (setf (gethash (edge-uri edge) known-nodes)
+                                   (make-node :uri (edge-uri edge)
+                                              :method (edge-method edge))))))
       (unless (find uri '("/" "#") :test #'equal)
         (rec
           (setf (gethash uri known-nodes)
@@ -159,7 +163,7 @@
 
 (defun who-refs (uri table)
   (loop :for node-uri :being :each :hash-key :of table :using (:hash-value node)
-        :if (find uri (node-edges node) :test #'string= :key #'uri-uri)
+        :if (gethash uri (node-edges node))
           :collect node))
 
 ;;;; CL-DOT
@@ -171,7 +175,7 @@
                  :attributes (list :label (decode-uri (node-uri node)))))
 
 (defmethod cl-dot:graph-object-points-to ((graph (eql 'web)) (node node))
-  (loop :for edge :in (node-edges node)
+  (loop :for edge :being :each :hash-value :of (node-edges node)
         :collect (gethash (uri-uri edge) *site-table*)))
 
 (defun which (algorithm)
@@ -236,9 +240,9 @@
   (loop :for uri :being :each :hash-key :of table
         :do (funcall (formatter "~S~%") *standard-output* (decode-uri uri)))
   (loop :for uri :being :each :hash-key :of table :using (:hash-value node)
-        :do (dolist (edge (node-edges node))
-              (funcall (formatter "~S ~S~%") *standard-output* (decode-uri uri)
-                       (decode-uri (uri-uri edge))))))
+        :do (loop :for edge :being :each :hash-value :of (node-edges node)
+                  :do (funcall (formatter "~S ~S~%") *standard-output*
+                               (decode-uri uri) (decode-uri (uri-uri edge))))))
 
 ;;;; WITH-COOKIE
 
