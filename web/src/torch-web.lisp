@@ -64,10 +64,22 @@
       (fill-pointer vector)
       (length vector)))
 
+(defmacro do-selected ((var select) &body body)
+  (let ((selected (gensym "SELECTED")) (i (gensym "INDEX")))
+    `(loop :with ,selected := ,select
+           :for ,i :upfrom 0 :below (vector-length ,selected)
+           :for ,var := (aref ,selected ,i)
+           :do (tagbody ,@body))))
+
 (defun form-submethod (form)
-  (loop :with inputs = (clss:select "input[name=method]" form)
-        :for i :upfrom 0 :below (vector-length inputs)
-        :thereis (plump:attribute (aref inputs i) "value")))
+  (do-selected (input (clss:select "input[name=method]" form))
+    (let ((value (plump:attribute input "value")))
+      (when value
+        (return value)))))
+
+(defun should-ignore-p (link)
+  (or (uiop:string-prefix-p "#" link) ; fragment.
+      (uiop:string-prefix-p "javascript" link)))
 
 (declaim
  (ftype (function (simple-string &optional (or null simple-string))
@@ -98,27 +110,21 @@
           (if (not html)
               (add (make-edge :uri uri :method :get) edges)
               (progn
-               (loop :with forms := (clss:select "form" html)
-                     :for i :upfrom 0 :below (vector-length forms)
-                     :for action := (plump:attribute (aref forms i) "action")
-                     :when action
-                       :do (add
-                             (make-edge :uri action
-                                        :method (intern
-                                                  (string-upcase
-                                                    (plump:attribute
-                                                      (aref forms i) "method"))
-                                                  :keyword)
-                                        :submethod (form-submethod
-                                                     (aref forms i)))
-                             edges))
-               (loop :with anchors = (clss:select "a" html)
-                     :for i :upfrom 0 :below (vector-length anchors)
-                     :for href := (plump:attribute (aref anchors i) "href")
-                     :when (and href
-                                (not (equal "/" href))
-                                (not (uiop:string-prefix-p "#" href)))
-                       :do (add (make-edge :uri href :method :get) edges)))))))
+               (do-selected (form (clss:select "form" html))
+                 (let ((action (plump:attribute form "action")))
+                   (when action
+                     (add
+                       (make-edge :uri action
+                                  :method (intern
+                                            (string-upcase
+                                              (plump:attribute form "method"))
+                                            :keyword)
+                                  :submethod (form-submethod form))
+                       edges))))
+               (do-selected (anchor (clss:select "a" html))
+                 (let ((href (plump:attribute anchor "href")))
+                   (when (and href (not (should-ignore-p href)))
+                     (add (make-edge :uri href :method :get) edges)))))))))
     edges))
 
 (defun internal-link-p (link root)
