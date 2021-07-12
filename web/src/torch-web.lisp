@@ -82,16 +82,16 @@
       (uiop:string-prefix-p "javascript" link)))
 
 (declaim
- (ftype (function (simple-string &optional (or null simple-string))
+ (ftype (function (simple-string &optional simple-string)
          (values hash-table ; of-type (hash-table uri (or edges failed))
                  &optional))
         uri-edges))
 
-(defun uri-edges (uri &optional root)
+(defun uri-edges (uri &optional (root uri))
   (uiop:format! *trace-output* "~%REQUEST: ~S" uri)
   (let ((edges (make-hash-table :test #'equal)))
     (handler-case
-        (dex:get (quri:render-uri (quri:merge-uris uri (or root "")))
+        (dex:get (quri:render-uri (quri:merge-uris uri root))
                  :cookie-jar *cookie*)
       (dex:http-request-failed (c)
         (add
@@ -123,8 +123,17 @@
                        edges))))
                (do-selected (anchor (clss:select "a" html))
                  (let ((href (plump:attribute anchor "href")))
-                   (when (and href (not (should-ignore-p href)))
-                     (add (make-edge :uri href :method :get) edges)))))))))
+                   (cond ((null href)) ; do nothing.
+                         ((should-ignore-p href)) ; do nothing.
+                         ((equal "/" href)
+                          (add
+                            (make-edge :uri (quri:render-uri
+                                              (quri:merge-uris href root))
+                                       :method :get)
+                            edges))
+                         (t
+                          (add (make-edge :uri href :method :get)
+                               edges))))))))))
     edges))
 
 (defun internal-link-p (link root)
