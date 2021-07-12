@@ -8,6 +8,25 @@
 
 (declaim (optimize speed))
 
+;;;; For debug use.
+;; To avoid redefine cl-dot print-object method if exists.
+
+(unless (find-method #'print-object nil (list (find-class 'cl-dot:node) t) nil)
+  (defmethod print-object ((node cl-dot:node) stream)
+    (print-unreadable-object (node stream :type t)
+      (let ((label (getf (cl-dot::attributes-of node) :label)))
+        (funcall (formatter "~A") stream (or label (cl-dot::id-of node)))))))
+
+;; To avoid redefine cl-dot print-object method if exists.
+
+(unless (find-method #'print-object nil (list (find-class 'cl-dot::edge) t)
+                     nil)
+  (defmethod print-object ((edge cl-dot::edge) stream)
+    (print-unreadable-object (edge stream :type t)
+      (funcall (formatter "to ~A") stream
+               (getf (cl-dot::attributes-of (cl-dot::target-of edge))
+                     :label)))))
+
 ;;;; TYPES
 
 (deftype algorithm ()
