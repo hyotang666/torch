@@ -217,6 +217,11 @@
                       :format format)
     (pathname namestring)))
 
+;;;; PRINT-DOT for debug use.
+
+(defun print-dot (table &key direction)
+  (cl-dot:print-graph (graph<-table table) :directed direction))
+
 ;;;; PRINT-LABELS
 ;; Especially for [graph_editor](ttps://csacademy.com/app/graph_editor/)
 
