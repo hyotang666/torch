@@ -126,11 +126,7 @@
                    (cond ((null href)) ; do nothing.
                          ((should-ignore-p href)) ; do nothing.
                          ((equal "/" href)
-                          (add
-                            (make-edge :uri (quri:render-uri
-                                              (quri:merge-uris href root))
-                                       :method :get)
-                            edges))
+                          (add (make-edge :uri root :method :get) edges))
                          (t
                           (add (make-edge :uri href :method :get)
                                edges))))))))))
