@@ -77,6 +77,8 @@
       (when value
         (return value)))))
 
+(defparameter *ignore-external-links* nil "When true, bound root uri.")
+
 (defun should-ignore-p (link)
   (or (uiop:string-prefix-p "#" link) ; fragment.
       (uiop:string-prefix-p "javascript" link)))
@@ -133,7 +135,9 @@
     edges))
 
 (defun internal-link-p (link root)
-  (or (uiop:string-prefix-p "/" link) (uiop:string-prefix-p root link)))
+  (or (uiop:string-prefix-p "/" link)
+      (uiop:string-prefix-p "." link)
+      (uiop:string-prefix-p root link)))
 
 (declaim
  (ftype (function (simple-string &optional (or null cl-cookie:cookie-jar))
@@ -189,7 +193,9 @@
 
 (defmethod cl-dot:graph-object-points-to ((graph (eql 'web)) (node node))
   (loop :for edge :being :each :hash-value :of (node-edges node)
-        :collect (gethash (uri-uri edge) *site-table*)))
+        :if (or (not *ignore-external-links*)
+                (internal-link-p (uri-uri edge) *ignore-external-links*))
+          :collect (gethash (uri-uri edge) *site-table*)))
 
 (defun which (algorithm)
   (let* ((search (format nil "~(~A~)" algorithm))
@@ -213,20 +219,28 @@
 (defun graph<-table (table &key direction)
   (let ((*site-table* table))
     (apply #'cl-dot:generate-graph-from-roots 'web
-           (alexandria:hash-table-values *site-table*)
+           (loop :for node :being :each :hash-value :of table :using
+                      (:hash-key uri)
+                 :if (or (not *ignore-external-links*)
+                         (internal-link-p uri *ignore-external-links*))
+                   :collect node)
            (when direction
              `((:rankdir ,(string direction)))))))
 
 (declaim
  (ftype (function
          (simple-string &key (:file simple-string) (:format torch:file-format)
-          (:direction torch:direction) (:algorithm algorithm))
+          (:direction torch:direction) (:algorithm algorithm)
+          (:external-link boolean))
          (values pathname &optional))
         site-graph))
 
 (defun site-graph
-       (uri &key (file "site-graph") (format :svg) direction (algorithm :sfdp))
+       (uri
+        &key (file "site-graph") (format :svg) direction (algorithm :sfdp)
+        (external-link t))
   (let ((namestring (the simple-string (torch::filename file format)))
+        (*ignore-external-links* (and (not external-link) uri))
         (cl-dot:*dot-path*
          (if direction
              (which algorithm)
