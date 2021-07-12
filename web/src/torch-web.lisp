@@ -176,11 +176,23 @@
                   (make-node :uri uri :method :get :edges (uri-edges uri))))))
     known-nodes))
 
-;;;; WHO-REFS
+;;;; QUERIES
 
 (defun who-refs (uri table)
   (loop :for node-uri :being :each :hash-key :of table :using (:hash-value node)
         :if (gethash uri (node-edges node))
+          :collect node))
+
+(defun external-links (root table)
+  (loop :for node-uri :being :each :hash-key :of table :using (:hash-value node)
+        :if (not (internal-link-p node-uri root))
+          :collect node))
+
+(defun resource-links (root table)
+  ;; KLUDGE: Should I introduce RESOURCE object?
+  (loop :for node-uri :being :each :hash-key :of table :using (:hash-value node)
+        :if (and (= 1 (hash-table-count (node-edges node)))
+                 (internal-link-p node-uri root))
           :collect node))
 
 ;;;; CL-DOT
