@@ -155,6 +155,13 @@
                   (make-node :uri uri :method :get :edges (uri-edges uri))))))
     known-nodes))
 
+;;;; WHO-REFS
+
+(defun who-refs (uri table)
+  (loop :for node-uri :being :each :hash-key :of table :using (:hash-value node)
+        :if (find uri (node-edges node) :test #'string= :key #'uri-uri)
+          :collect node))
+
 ;;;; CL-DOT
 
 (defvar *site-table*)
