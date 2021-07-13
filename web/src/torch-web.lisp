@@ -295,6 +295,30 @@
          (when direction
            `((:rankdir ,(string direction))))))
 
+(defmacro with-dot-syntax
+          ((namestring
+            &key
+            (file "site-graph")
+            (format :svg)
+            direction
+            (algorithm :sfdp)
+            internal)
+           &body body)
+  (let ((vdir (gensym "DIRECTION")))
+    `(let* ((,vdir ,direction)
+            (,namestring (torch::filename ,file ,format))
+            (*ignore-external-links* ,internal)
+            (cl-dot:*dot-path*
+             (if ,vdir
+                 (which ,algorithm)
+                 cl-dot:*dot-path*))
+            (cl-dot:*neato-path*
+             (if ,vdir
+                 cl-dot:*neato-path*
+                 (which ,algorithm))))
+       ,@body
+       (probe-file ,namestring))))
+
 (declaim
  (ftype (function
          (simple-string &key (:file simple-string) (:format torch:file-format)
@@ -307,21 +331,15 @@
        (uri
         &key (file "site-graph") (format :svg) direction (algorithm :sfdp)
         (external-link t))
-  (let ((namestring (the simple-string (torch::filename file format)))
-        (*ignore-external-links* (and (not external-link) uri))
-        (cl-dot:*dot-path*
-         (if direction
-             (which algorithm)
-             cl-dot:*dot-path*))
-        (cl-dot:*neato-path*
-         (if direction
-             cl-dot:*neato-path*
-             (which algorithm))))
+  (with-dot-syntax (namestring :file file
+                               :format format
+                               :direction direction
+                               :algorithm algorithm
+                               :internal (and (not external-link) uri))
     (cl-dot:dot-graph (graph<-table (make-site-table uri) :direction direction)
                       namestring
                       :directed direction
-                      :format format)
-    (pathname namestring)))
+                      :format format)))
 
 ;;;; SAVE/LOAD -TABLE
 
