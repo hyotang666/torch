@@ -204,13 +204,22 @@
 (defun label-of (attributes-mixin)
   (getf (cl-dot::attributes-of attributes-mixin) :label ""))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; This is used in read time. EVAL-WHEN is needed.
+  (defconstant string-class
+    ;; To infer type for optimization, sbcl needs specializer as simple-string but
+    ;; CLHS does not say simple-string is a class.
+    '#.(if (find-class 'simple-string nil)
+           'simple-string
+           'string)))
+
 (defgeneric who-refs (uri repository)
-  (:method ((uri simple-string) (table hash-table))
+  (:method ((uri #.string-class) (table hash-table))
     (loop :for node-uri :being :each :hash-key :of table :using
                (:hash-value node)
           :if (gethash uri (node-edges node))
             :collect node))
-  (:method ((uri simple-string) (graph cl-dot::graph))
+  (:method ((uri #.string-class) (graph cl-dot::graph))
     (loop :for edge :in (cl-dot::edges-of graph)
           :for target := (cl-dot::target-of edge)
           :if (equal uri (label-of target))
@@ -219,25 +228,25 @@
                     (delete-duplicates acc :key #'label-of :test #'equal)))))
 
 (defgeneric external-links (root repository)
-  (:method ((root simple-string) (table hash-table))
+  (:method ((root #.string-class) (table hash-table))
     (loop :for node-uri :being :each :hash-key :of table :using
                (:hash-value node)
           :if (not (internal-link-p node-uri root))
             :collect node))
-  (:method ((root simple-string) (graph cl-dot::graph))
+  (:method ((root #.string-class) (graph cl-dot::graph))
     (loop :for node :in (cl-dot::nodes-of graph)
           :if (not (internal-link-p (label-of node) root))
             :collect node)))
 
 (defgeneric resource-links (root repository)
-  (:method ((root simple-string) (table hash-table))
+  (:method ((root #.string-class) (table hash-table))
     ;; KLUDGE: Should I introduce RESOURCE object?
     (loop :for node-uri :being :each :hash-key :of table :using
                (:hash-value node)
           :if (and (= 1 (hash-table-count (node-edges node)))
                    (internal-link-p node-uri root))
             :collect node))
-  (:method ((hint simple-string) (graph cl-dot::graph))
+  (:method ((hint #.string-class) (graph cl-dot::graph))
     (loop :for node :in (cl-dot::nodes-of graph)
           :if (search hint (label-of node))
             :collect node)))
