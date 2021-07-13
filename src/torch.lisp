@@ -79,10 +79,12 @@
 
 ;;; general utilities.
 
-(defun doc (system path)
-  (uiop:read-file-string
-    (uiop:subpathname (asdf:system-source-directory (asdf:find-system system))
-                      path)))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; DOC is used in read time.
+  (defun doc (system path)
+    (uiop:read-file-string
+      (uiop:subpathname
+        (asdf:system-source-directory (asdf:find-system system)) path))))
 
 ;;;; SYSTEM-GRAPH.
 
