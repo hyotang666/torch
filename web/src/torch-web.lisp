@@ -323,6 +323,19 @@
                       :format format)
     (pathname namestring)))
 
+;;;; SAVE/LOAD -TABLE
+
+(defun save-table (table &optional (pathname "site-table"))
+  (with-open-file (s pathname :direction :output
+                   :if-does-not-exist :create
+                   :if-exists :supersede
+                   :element-type `(unsigned-byte 8))
+    (hu.dwim.serializer:serialize table :output s)))
+
+(defun load-table (&optional (pathname "site-table"))
+  (with-open-file (s pathname :element-type `(unsigned-byte 8))
+    (hu.dwim.serializer:deserialize s)))
+
 ;;;; PRINT-DOT for debug use.
 
 (defun print-dot (table &key direction)
