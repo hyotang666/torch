@@ -286,14 +286,17 @@
 
 (defun graph<-table (table &key direction)
   (setf *site-table* table)
-  (apply #'cl-dot:generate-graph-from-roots 'web
-         (loop :for node :being :each :hash-value :of table :using
-                    (:hash-key uri)
-               :if (or (not *ignore-external-links*)
-                       (internal-link-p uri *ignore-external-links*))
-                 :collect node)
-         (when direction
-           `((:rankdir ,(string direction))))))
+  (cl-dot:generate-graph-from-roots 'web
+                                    (loop :for node :being :each
+                                               :hash-value :of table :using
+                                               (:hash-key uri)
+                                          :if (or (not *ignore-external-links*)
+                                                  (internal-link-p uri
+                                                                   *ignore-external-links*))
+                                            :collect node)
+                                    `(:concentrate t
+                                      ,@(when direction
+                                          `(:rankdir ,(string direction))))))
 
 (defmacro with-dot-syntax
           ((namestring
