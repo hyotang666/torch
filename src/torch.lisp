@@ -14,9 +14,9 @@
            #:*ignore-standalone*
            #:*split*
            #:*invalid-chars*
-	   ;; TYPEs
-	   #:file-format
-	   #:direction
+           ;; TYPEs
+           #:file-format
+           #:direction
            ;; constant
            #:+supported-formats+))
 
