@@ -347,15 +347,10 @@
 ;;;; SAVE/LOAD -TABLE
 
 (defun save-table (table &optional (pathname "site-table"))
-  (with-open-file (s pathname :direction :output
-                   :if-does-not-exist :create
-                   :if-exists :supersede
-                   :element-type `(unsigned-byte 8))
-    (hu.dwim.serializer:serialize table :output s)))
+  (cl-store:store table pathname))
 
 (defun load-table (&optional (pathname "site-table"))
-  (with-open-file (s pathname :element-type `(unsigned-byte 8))
-    (hu.dwim.serializer:deserialize s)))
+  (cl-store:restore pathname))
 
 ;;;; PRINT-DOT for debug use.
 

@@ -13,7 +13,7 @@
    "cl-dot" ; Graphviz dot language generator.
    "alexandria" ; Public domain utilities.
    "torch" ; Visualize graphs. Especially for types.
-   "hu.dwim.serializer" ; object serializer to cache data.
+   "cl-store" ; object serializer to cache data.
    )
   :pathname
   "src/"
