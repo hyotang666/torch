@@ -1,7 +1,7 @@
 (in-package :cl-user)
 
 (defpackage :torch
-  (:use :cl :predcase)
+  (:use :cl)
   (:export ;;;; primary api
            #:code-graph
            #:system-graph
@@ -338,10 +338,12 @@
                                                                 (code-privates
                                                                   object))))
                                    :shape :box
-                                   :color (predcase (code-name object)
-                                            (external-symbolp :red)
-                                            (symbol-names-file-p :blue)
-                                            (t :black)))))
+                                   :color (let ((name (code-name object)))
+                                            (cond
+                                              ((external-symbolp name) :red)
+                                              ((symbol-names-file-p name)
+                                               :blue)
+                                              (t :black))))))
 
 (defun edges (code)
   (append

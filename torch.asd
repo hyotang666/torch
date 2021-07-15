@@ -6,7 +6,6 @@
   (
    "cl-dot"     ; dot api.
    "alexandria" ; public domain utilities.
-   "predcase"   ; control flow.
    "millet"     ; wrapper for implementation dependent utilities.
    )
   :pathname "src/"
