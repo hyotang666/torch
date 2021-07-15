@@ -329,21 +329,19 @@
                        (asdf:component-children-by-name system))))))
 
 (defmethod cl-dot:graph-object-node ((graph (eql 'code)) (object code))
-  (make-instance 'cl-dot:node
-                 :attributes (list :label (substitute #\Newline #\Space
-                                                      (format nil "~A~@[ ~A~]"
-                                                              (code-name
-                                                                object)
-                                                              (when *ignore-privates*
-                                                                (code-privates
-                                                                  object))))
-                                   :shape :box
-                                   :color (let ((name (code-name object)))
-                                            (cond
-                                              ((external-symbolp name) :red)
-                                              ((symbol-names-file-p name)
-                                               :blue)
-                                              (t :black))))))
+  (flet ((label (object)
+           (substitute #\Newline #\Space
+                       (format nil "~A~@[ ~A~]" (code-name object)
+                               (when *ignore-privates*
+                                 (code-privates object)))))
+         (color (name)
+           (cond ((external-symbolp name) :red)
+                 ((symbol-names-file-p name) :blue)
+                 (t :black))))
+    (make-instance 'cl-dot:node
+                   :attributes (list :label (label object)
+                                     :shape :box
+                                     :color (color (code-name object))))))
 
 (defun edges (code)
   (append
