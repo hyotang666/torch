@@ -75,7 +75,7 @@
     (asdf:component (asdf:component-name obj))
     (function (symbol-name (millet:function-name obj)))))
 
-(deftype direction () '(member :lr :rl :bt))
+(deftype direction () '(member nil :lr :rl :tb :bt))
 
 ;;; general utilities.
 
