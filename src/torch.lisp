@@ -412,7 +412,7 @@
   #.(doc :torch "doc/code-graph.md")
   (let* ((graph (graph system)) (*codes* (setup graph (privates graph))))
     (if (not *split*)
-        (make-dot system type
+        (make-dot (asdf:coerce-name system) type
                   (if *ignore-standalone*
                       (remove-if #'standalone-p
                                  (alexandria:hash-table-values *codes*))
